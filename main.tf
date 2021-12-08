@@ -1,6 +1,7 @@
 provider "aws" {
   region = "sa-east-1"
 }
+
 variable "image_id" {
   type        = string
   description = "O id do Amazon Machine Image (AMI) para ser usado no servidor."
@@ -13,7 +14,7 @@ variable "image_id" {
 
 variable "subnet" {
   type        = string
-  description = "Subnet "
+  description = "O Subnet ID a ser usado."
 
   validation {
     condition     = length(var.subnet) == 24 && substr(var.subnet, 0, 7) == "subnet-"
@@ -35,8 +36,8 @@ variable "Name" {
   type        = string
   description = "Nome da instancia "
 
-validation {
-    condition     = length(var.Name) > 1 
+  validation {
+    condition     = length(var.Name) > 1
     error_message = "O nome da instância nao e valido, tem que conter ao menos dois caracteres."
   }
 }
@@ -45,18 +46,19 @@ variable "chave" {
   type        = string
   description = "chave de segurança da instancia."
 
-validation {
-    condition     = length(var.chave) > 1 
+  validation {
+    condition     = length(var.chave) > 1
     error_message = "A chave de segurança da instância nao e valido, tem que conter ao menos dois caracteres."
   }
 }
 
 variable "tamanho" {
-  type        = string
+  type        = number
+  default = 8
   description = "Tamanho da instanci."
 
-validation {
-    condition     = (var.tamanho=="8" || var.tamanho=="16")
+  validation {
+    condition     = (var.tamanho >= 8 && var.tamanho <= 16)
     error_message = "O tamanho da instância nao e valido, tem que 8 ou 16."
   }
 }
@@ -65,37 +67,50 @@ variable "sec_group" {
   type        = string
   description = "Securite group da instancia."
 
-validation {
+  validation {
     condition     = length(var.sec_group) == 20 && substr(var.sec_group, 0, 3) == "sg-"
     error_message = "O Securite group da instância nao e valido, tem que começar com sg- e conter 20 caracters."
   }
 }
 
+variable "qtde" {
+  type        = number
+  description = "Quantidade de instâncias."
+
+  validation {
+    condition     = var.qtde < 6
+    error_message = "A quantidade não pode ser maior que 5."
+  }
+}
 
 resource "aws_instance" "web2" {
- 
-  subnet_id = var.subnet
-  ami = var.image_id
-  instance_type = var.instance_type
-  key_name =  var.chave # a chave que vc tem na maquina pessoal
+
+  subnet_id                   = var.subnet
+  ami                         = var.image_id
+  instance_type               = var.instance_type
+  key_name                    = var.chave # a chave que vc tem na maquina pessoal
   associate_public_ip_address = true
-  vpc_security_group_ids = [var.sec_group]
+  vpc_security_group_ids      = [var.sec_group]
   root_block_device {
-    encrypted = true
+    encrypted   = true
     volume_size = var.tamanho
   }
-
+  count = var.qtde
   tags = {
-    Name = "turma3-ec2-ze-tf-${var.Name}"
+    Name = "turma3-ec2-ze-tf-${var.Name}-${count.index}"
     #Tag2 = "Tag teste - ${var.maquinas[keys(var.maquinas)[count.index]]}"
   }
 }
 
 output "maquina_aws" {
-    value = [
-        aws_instance.web2.public_ip,
-        aws_instance.web2.public_dns
-    ]
+  value = [
+    for web in aws_instance.web2 :
+    <<EOF
+          Name: ${web.tags_all.Name}
+          ssh -i ${var.chave} ubuntu@${web.public_dns}
+          Public ip: ${web.public_ip}
+        EOF
+  ]
 }
 
 #subnet-091d8530ca8d35a20 (subnet-ze-1a)
