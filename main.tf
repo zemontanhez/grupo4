@@ -1,34 +1,66 @@
 provider "aws" {
   region = "sa-east-1"
 }
+# data "aws_ami" "ubuntu" {
+#   most_recent = true
+#   owners = ["099720109477"] # ou ["099720109477"] ID master com permissão para busca
+#   filter {
+#     name   = "name"
+#     values = ["ubuntu/images/hvm-ssd/ubuntu-focal-*"] # exemplo de como listar um nome de AMI - 'aws ec2 describe-images --region us-east-1 --image-ids ami-09e67e426f25ce0d7' https://docs.aws.amazon.com/cli/latest/reference/ec2/describe-images.html
+#   }
+# }
+# data http api {
+#   url = "https://viacep.com.br/ws/03512050/json/unicode/"
+#   request_headers = {
+#     Accept = "application/json"
+#   }
+# }
+data "http" "myip" {
+  url = "http://ipv4.icanhazip.com" # outra opção "https://ifconfig.me"
+}
 
-variable "image_id" {
-  type        = string
-  description = "O id do Amazon Machine Image (AMI) para ser usado no servidor."
-
-  validation {
-    condition     = length(var.image_id) == 21 && substr(var.image_id, 0, 4) == "ami-"
-    error_message = "O valor do image_id não é válido, tem que começar com \"ami-\" e conter 21 caracters."
+data "aws_vpc" "selected" {
+  filter {
+    name = "tag:Name"
+    values = ["vpc-turma3-ze"]
   }
 }
 
-variable "subnet" {
-  type        = string
-  description = "O Subnet ID a ser usado."
+resource "aws_security_group" "allow_ssh" {
+  name        = "libera_ssh_ze_tf"
+  description = "Allow SSH inbound traffic"
+  vpc_id = "vpc-0b76bae68ca47a425"  #mudar
+  ingress = [
+    {
+      description      = "SSH from VPC"
+      from_port        = 22
+      to_port          = 22
+      protocol         = "tcp"
+      cidr_blocks      = ["${chomp( data.http.myip.body )}/32"]
+      # cidr_blocks      = ["186.220.196.221/32"]
+      ipv6_cidr_blocks = ["::/0"]
+      prefix_list_ids = null,
+      security_groups = null,
+      self            = null
+    }
+  ]
 
-  validation {
-    condition     = length(var.subnet) == 24 && substr(var.subnet, 0, 7) == "subnet-"
-    error_message = "O valor do subnet não é válido, tem que começar com \"subnet-\" e conter 24 caracters."
-  }
-}
+  egress = [
+    {
+      from_port        = 0
+      to_port          = 0
+      protocol         = "-1"
+      cidr_blocks      = ["0.0.0.0/0"]
+      ipv6_cidr_blocks = ["::/0"],
+      prefix_list_ids  = null,
+      security_groups  = null,
+      self             = null,
+      description      = "Libera dados da rede interna"
+    }
+  ]
 
-variable "instance_type" {
-  type        = string
-  description = "Tipo da instancia "
-
-  validation {
-    condition     = length(var.instance_type) > 6 && (substr(var.instance_type, 0, 3) == "t2." || substr(var.instance_type, 0, 3) == "t3.")
-    error_message = "O tipo da instância não é válido, tem que começar com \"t2.\" ou \"t3.\"."
+  tags = {
+    Name = "libera_ssh_ze_tf"
   }
 }
 
@@ -42,64 +74,31 @@ variable "Name" {
   }
 }
 
-variable "chave" {
-  type        = string
-  description = "chave de segurança da instancia."
-
-  validation {
-    condition     = length(var.chave) > 1
-    error_message = "A chave de segurança da instância nao e valido, tem que conter ao menos dois caracteres."
+resource "aws_key_pair" "chave_key" {
+  key_name   = "id_rsa"
+  public_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQC+uZzLjELltYmQi5PlAIvtwjqvd49TtjK8LHnRv0XNUIlnDcuqqPubq1TEfABCEV/AlHsGbPryFApB2006PlSzOMoGKAP6tA2aYdI35hx/kQNl6DzReGQwwtYyxwJApVkBNbN6wTTGfLGs5/nmKMb2PHKfwvA6eXimsAITYt/ZZLr/cytSHyGdB7K2/DaucelmqN+iq1SbVLm//n2InEseTB/rY31qbJg8C6eT5z4a3o25DRDgo4/5yr3NGag9B6ogvfVUdW5RPxFI+IBpqnXMt5XE+XG4U+lpfMymMho05TNIoDmgdG7u3OCwpCVbU3ySYCX/LMbrE7usUuzAcATcGjYo5kz8fLIqdxiZu3iU0IRrwJ1SmzLo6QxDmX6XyijzEjR8Epb91FLi3ygjucp1FHsWZVXNqAj8lxTCBOPUHrCmIrtBFsIh65d6DzLIiwb1xUREicBnyG42X2Ul66IeZVG/4W/trCx+V7l3eh0Vol0Y74LuxtaA7HNfFRBmMus= ubuntu@montanhez-dev"
   }
-}
-
-variable "tamanho" {
-  type        = number
-  default = 8
-  description = "Tamanho da instanci."
-
-  validation {
-    condition     = (var.tamanho >= 8 && var.tamanho <= 16)
-    error_message = "O tamanho da instância nao e valido, tem que 8 ou 16."
-  }
-}
-
-variable "sec_group" {
-  type        = string
-  description = "Securite group da instancia."
-
-  validation {
-    condition     = length(var.sec_group) == 20 && substr(var.sec_group, 0, 3) == "sg-"
-    error_message = "O Securite group da instância nao e valido, tem que começar com sg- e conter 20 caracters."
-  }
-}
-
-variable "qtde" {
-  type        = number
-  description = "Quantidade de instâncias."
-
-  validation {
-    condition     = var.qtde < 6
-    error_message = "A quantidade não pode ser maior que 5."
-  }
-}
 
 resource "aws_instance" "web2" {
-
   subnet_id                   = var.subnet
   ami                         = var.image_id
   instance_type               = var.instance_type
-  key_name                    = var.chave # a chave que vc tem na maquina pessoal
+  key_name                    = "id_rsa" # a chave que vc tem na maquina pessoal
   associate_public_ip_address = true
-  vpc_security_group_ids      = [var.sec_group]
+  vpc_security_group_ids      = ["${aws_security_group.allow_ssh.id}"]
   root_block_device {
     encrypted   = true
     volume_size = var.tamanho
   }
   count = var.qtde
   tags = {
-    Name = "turma3-ec2-ze-tf-${var.Name}-${count.index}"
+    Name = "${var.pre_name}-${var.Name}-${count.index}"
     #Tag2 = "Tag teste - ${var.maquinas[keys(var.maquinas)[count.index]]}"
   }
+  depends_on = [
+    aws_security_group.allow_ssh,
+    aws_key_pair.chave_key
+  ]
 }
 
 output "maquina_aws" {
@@ -107,13 +106,22 @@ output "maquina_aws" {
     for web in aws_instance.web2 :
     <<EOF
           Name: ${web.tags_all.Name}
-          ssh -i ${var.chave} ubuntu@${web.public_dns}
+          ssh -i id_rsa ubuntu@${web.public_ip}
           Public ip: ${web.public_ip}
         EOF
   ]
 }
 
-#subnet-091d8530ca8d35a20 (subnet-ze-1a)
-#ami-0e66f5495b4efdd0f
-#sg-0c493a481025a9028 (secgroup-turma3-ze)
-#keypair-turma3-ze-dev
+output ip {
+  value       = "${chomp( data.http.myip.body )}/32"
+  description = "output de ip"
+}
+
+# output api {
+#   value       = jsondecode(data.http.api.body).bairro
+# }
+
+# output name {
+#   value       = data.aws_ami.ubuntu.id
+#   description = "output de ami"
+# }
